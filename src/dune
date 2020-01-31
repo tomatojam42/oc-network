@@ -1,2 +1,2 @@
 (executable
- (name oc-network))
+ (name oc_network))

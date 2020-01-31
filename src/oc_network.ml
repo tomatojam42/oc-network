@@ -10,6 +10,7 @@ let get_connection arg =
       print_string
         "virbr0  d866c7aa-d7d6-4981-86cd-ee9e2358a82e  bridge    virbr0\n"
   | "help" -> print_newline ()
+  | _ -> print_newline ()
 
 let get_device arg =
   match arg with
@@ -20,7 +21,7 @@ let get_device arg =
          HWADDR: 20:CF:30:8B:59:C4\n\
          CONNECTION: LAN\n"
   | "help" -> print_newline ()
-
+  | _ -> print_newline ()
 (*  | _:string -> print_string ("error"); print_newline;;*)
 
 let main () =
@@ -37,7 +38,8 @@ let main () =
     | "device" ->
         get_device arg2;
         exit 0
-  with Invalid_argument "index out of bounds" ->
+    | _ -> show_help (); exit 0
+  with Invalid_argument _ ->
     if true then show_help ();
     exit 0
 
