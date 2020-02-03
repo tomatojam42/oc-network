@@ -30,19 +30,14 @@ let main () =
     let arg2 = Sys.argv.(2) in
     match arg1 with
     | "help" ->
-        show_help ();
-        exit 0
+        show_help ()
     | "connection" ->
-        get_connection arg2;
-        exit 0
+        get_connection arg2
     | "device" ->
-        get_device arg2;
-        exit 0
-    | _ -> show_help (); exit 0
+        get_device arg2
+    | _ -> show_help ()
   with Invalid_argument _ ->
-    if true then show_help ();
-    exit 0
+    show_help ()
 
-;;
-main ()
+let () = main ()
 
