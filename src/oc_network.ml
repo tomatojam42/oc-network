@@ -1,4 +1,6 @@
-let show_help () = print_string "This is the help. Author, drink poison\n"
+module Nm_common = Nm.Nm_common_interfaces.Org_freedesktop_NetworkManager
+
+let show_help () = print_string "This will be the help.\n"
 
 let get_connection arg =
   match arg with
@@ -40,4 +42,3 @@ let main () =
     show_help ()
 
 let () = main ()
-

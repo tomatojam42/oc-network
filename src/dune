@@ -1,2 +1,3 @@
 (executable
- (name oc_network))
+  (name oc_network)
+  (libraries nm ipaddr macaddr obus))
