@@ -1,5 +1,3 @@
 # oc-network
 
-Something
-
-lasdlasld
+Standalone program for edit NetworkManager settings.
