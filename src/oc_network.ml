@@ -1,9 +1,24 @@
 module Nm_common = Nm.Nm_common_interfaces.Org_freedesktop_NetworkManager
+module Nm_connection = Nm.Nm_connection_interfaces.Org_freedesktop_NetworkManager_Connection_Active
+(*open Ppx_lwt*)
+let (let*) = Lwt.bind
+let (and*) = Lwt.both
+open Nm
 
 let show_help () = print_string "This will be the help.\n"
 
-let get_connection arg =
-  match arg with
+let get_connection () =
+  Lwt_main.run begin 
+    let* bus = OBus_bus.system () in
+    let proxy = OBus_proxy.make
+    ~peer:(OBus_peer.make ~connection:bus ~name:"org.freedesktop.NetworkManager")
+    ~path:[ "org"; "freedesktop"; "NetworkManager"; "ActiveConnection"; "2" ] in
+    let prop = OBus_property.make Nm_interfaces.Org_freedesktop_NetworkManager_Connection_Active.p_Id proxy in
+    let* id = OBus_property.get prop in
+    Lwt_io.printlf "%s" id
+  end;
+  let arg2 = Sys.argv.(2) in
+  match arg2 with
   | "show" ->
       print_string
         "NAME    UUID                                  TYPE      DEVICE\n";
@@ -13,8 +28,10 @@ let get_connection arg =
         "virbr0  d866c7aa-d7d6-4981-86cd-ee9e2358a82e  bridge    virbr0\n"
   | "help" -> print_newline ()
   | _ -> print_newline ()
+  
 
-let get_device arg =
+let get_device () =
+  let arg = Sys.argv.(2) in
   match arg with
   | "show" ->
       print_string
@@ -24,21 +41,19 @@ let get_device arg =
          CONNECTION: LAN\n"
   | "help" -> print_newline ()
   | _ -> print_newline ()
-(*  | _:string -> print_string ("error"); print_newline;;*)
 
 let main () =
   try
     let arg1 = Sys.argv.(1) in
-    let arg2 = Sys.argv.(2) in
     match arg1 with
     | "help" ->
         show_help ()
     | "connection" ->
-        get_connection arg2
+        get_connection ()
     | "device" ->
-        get_device arg2
+        get_device ()
     | _ -> show_help ()
   with Invalid_argument _ ->
-    show_help ()
+    print_newline ()
 
 let () = main ()
