@@ -1,21 +1,26 @@
-module Nm_common = Nm.Nm_common_interfaces.Org_freedesktop_NetworkManager
-module Nm_connection = Nm.Nm_connection_interfaces.Org_freedesktop_NetworkManager_Connection_Active
+open Nm
+module Nm_common = Nm_interfaces.Org_freedesktop_NetworkManager
+module Nm_connection = Nm_interfaces.Org_freedesktop_NetworkManager_Connection_Active
 (*open Ppx_lwt*)
 let (let*) = Lwt.bind
 let (and*) = Lwt.both
-open Nm
+
 
 let show_help () = print_string "This will be the help.\n"
+
+let make_proxy bus path =
+  OBus_proxy.make
+    ~peer:(OBus_peer.make ~connection:bus ~name:"org.freedesktop.NetworkManager")
+    ~path
 
 let get_connection () =
   Lwt_main.run begin 
     let* bus = OBus_bus.system () in
-    let proxy = OBus_proxy.make
-    ~peer:(OBus_peer.make ~connection:bus ~name:"org.freedesktop.NetworkManager")
-    ~path:[ "org"; "freedesktop"; "NetworkManager"; "ActiveConnection"; "2" ] in
-    let prop = OBus_property.make Nm_interfaces.Org_freedesktop_NetworkManager_Connection_Active.p_Id proxy in
-    let* id = OBus_property.get prop in
-    Lwt_io.printlf "%s" id
+    let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager"; "ActiveConnection"; "2" ] in
+    let* id = OBus_property.get @@ OBus_property.make Nm_connection.p_Id proxy in
+    let* uuid = OBus_property.get @@ OBus_property.make Nm_connection.p_Uuid proxy in
+    let* type_conn = OBus_property.get @@ OBus_property.make Nm_connection.p_Type proxy in
+    Lwt_io.printlf "%s %s %s\n" id uuid type_conn
   end;
   let arg2 = Sys.argv.(2) in
   match arg2 with
