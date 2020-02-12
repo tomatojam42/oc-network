@@ -24,7 +24,10 @@ let show_conn bus path =
   let* id = open_prop Nm_connection.p_Id proxy in
   let* uuid = open_prop Nm_connection.p_Uuid proxy in
   let* type_conn = open_prop Nm_connection.p_Type proxy in
-  Lwt_io.printlf "%s %s %s" id uuid type_conn
+  let* dev_path1 = open_prop Nm_connection.p_Devices proxy in
+  let dev_path = match dev_path1 with [x] -> x |_ -> [] in
+  let* device = if dev_path = [] then lwt "--" else open_prop Nm_device.p_Interface (make_proxy bus dev_path) in
+  Lwt_io.printlf "%s %s %s %s" id uuid type_conn device
 
 let get_connection () =
   let arg2 = Sys.argv.(2) in
