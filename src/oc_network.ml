@@ -11,15 +11,13 @@ let lwt a = Lwt.return a
 
 let open_prop prop proxy = OBus_property.get @@ OBus_property.make prop proxy
 
-let show_help () = Lwt_io.printf "This will be the help.\n"
+let show_help () = Lwt_io.printf "Commands: connection show, device show.\n"
 
 let make_proxy bus path =
   OBus_proxy.make
     ~peer:
       (OBus_peer.make ~connection:bus ~name:"org.freedesktop.NetworkManager")
     ~path
-
-(*[ "org"; "freedesktop"; "NetworkManager"; "ActiveConnection"; "2" ]*)
 
 let show_conn bus path =
   let proxy = make_proxy bus path in
@@ -83,20 +81,16 @@ let show_device bus path =
     match dev_type with
     | "loopback" ->
         open_prop
-          Nm_interfaces.Org_freedesktop_NetworkManager_Device_Generic
-          .p_HwAddress proxy
+          Nm_interfaces.Org_freedesktop_NetworkManager_Device_Generic.p_HwAddress proxy
     | "ethernet" ->
         open_prop
-          Nm_interfaces.Org_freedesktop_NetworkManager_Device_Wired.p_HwAddress
-          proxy
+          Nm_interfaces.Org_freedesktop_NetworkManager_Device_Wired.p_HwAddress proxy
     | "bridge" ->
         open_prop
-          Nm_interfaces.Org_freedesktop_NetworkManager_Device_Bridge.p_HwAddress
-          proxy
+          Nm_interfaces.Org_freedesktop_NetworkManager_Device_Bridge.p_HwAddress proxy
     | "tun" ->
         open_prop
-          Nm_interfaces.Org_freedesktop_NetworkManager_Device_Tun.p_HwAddress
-          proxy
+          Nm_interfaces.Org_freedesktop_NetworkManager_Device_Tun.p_HwAddress proxy
     | _ -> lwt "something"
   in
   Lwt_io.printf "DEVICE: %s\nTYPE: %s\nHWADDR: %s\nCONNECTION: %s\n\n" device
