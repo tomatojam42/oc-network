@@ -72,7 +72,7 @@ let show_conn bus path =
   let* act = is_active bus path in
   Lwt_io.printlf "%s %s %s %s %s" act id uuid type_conn device
 
-let get_connection () =
+let get_connection bus =
   let arg2 = Sys.argv.(2) in
   match arg2 with
   | "show" ->
@@ -80,16 +80,26 @@ let get_connection () =
         Lwt_io.print
           "? NAME    UUID                                  TYPE      DEVICE\n"
       in
-      let* bus = OBus_bus.system () in
       let proxy =
         make_proxy bus [ "org"; "freedesktop"; "NetworkManager"; "Settings" ]
       in
       let* conns = open_prop Nm_settings.p_Connections proxy in
-
       parse conns (show_conn bus)
+  | "up" ->
+      let conn_name = Sys.argv.(3) in
+      let uuid_reg = Str.regexp "........-....-....-....-............" in
+      let path_reg = Str.regexp "/org/freedesktop/NetworkManager/Settings/*" in
+      if Str.string_match uuid_reg conn_name 0 then
+        (*let testproxy = make_proxy bus ["org"; "freedesktop"; "NetworkManager"] in
+        let* out_path = OBus_method.call Nm_common.m_ActivateConnection testproxy (["org";"freedesktop";"NetworkManager";"Settings";"1"],["org";"freedesktop";"NetworkManager";"Devices";"2"],[]) in
+        Lwt_io.printl (String.concat "/" (""::out_path))*)
+        Lwt_io.printl "uuid"
+      else if Str.string_match path_reg conn_name 0 then
+        Lwt_io.printl "path"
+      else Lwt_io.printl "name"
   | "help" ->
       Lwt_io.printlf
-        "Type \"oc_network device show\" to show all your network connections."
+      "Type \"oc_network device show\" to show all your network connections."
   | _ ->
       Lwt_io.printlf "Maybe you want to type \"oc_network connection help\" ?"
 
@@ -160,9 +170,10 @@ let main () =
   Lwt_main.run
     ( try
         let arg1 = Sys.argv.(1) in
+        let* bus = OBus_bus.system () in
         match arg1 with
         | "help" -> show_help ()
-        | "connection" -> get_connection ()
+        | "connection" -> get_connection bus
         | "device" -> get_device ()
         | _ -> show_help ()
       with Invalid_argument _ -> show_help () )
