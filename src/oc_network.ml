@@ -36,7 +36,7 @@ let get_connection () =
   let arg2 = Sys.argv.(2) in
   match arg2 with
   | "show" ->
-      let _ =
+      let* () =
         Lwt_io.print
           "NAME    UUID                                  TYPE      DEVICE\n"
       in
@@ -48,7 +48,7 @@ let get_connection () =
         | [] -> Lwt_io.printlf "There is no connections"
         | [ x ] -> show_conn bus x
         | hd :: tl ->
-            let _ = show_conn bus hd in
+            let* () = show_conn bus hd in
             parse tl
       in
       parse act_conns
@@ -63,7 +63,7 @@ let show_device bus path =
     match dev_type_lwt with
     | 0l -> "unknown"
     | 1l -> "ethernet"
-    | 2l -> "WiFi"
+    | 2l -> "wifi"
     | 5l -> "bluetooth"
     | 8l -> "mobile modem"
     | 13l -> "bridge"
@@ -91,7 +91,10 @@ let show_device bus path =
     | "tun" ->
         open_prop
           Nm_interfaces.Org_freedesktop_NetworkManager_Device_Tun.p_HwAddress proxy
-    | _ -> lwt "something"
+    | "wifi" ->
+        open_prop 
+          Nm_device_wireless_interfaces.Org_freedesktop_NetworkManager_Device_Wireless.p_HwAddress proxy
+    | _ -> lwt "--"
   in
   Lwt_io.printf "DEVICE: %s\nTYPE: %s\nHWADDR: %s\nCONNECTION: %s\n\n" device
     dev_type hwaddr conn
@@ -108,7 +111,7 @@ let get_device () =
         | [] -> Lwt_io.printlf "There is no network devices"
         | [ x ] -> show_device bus x
         | hd :: tl ->
-            let _ = show_device bus hd in
+            let* () = show_device bus hd in
             parse tl
       in
       parse devices
