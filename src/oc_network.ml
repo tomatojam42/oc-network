@@ -3,6 +3,9 @@ module Nm_common = Nm_interfaces.Org_freedesktop_NetworkManager
 module Nm_connection =
   Nm_interfaces.Org_freedesktop_NetworkManager_Connection_Active
 module Nm_device = Nm_interfaces.Org_freedesktop_NetworkManager_Device
+module Nm_settings = Nm_interfaces.Org_freedesktop_NetworkManager_Settings
+module Nm_settings_conn =
+  Nm_interfaces.Org_freedesktop_NetworkManager_Settings_Connection
 (*open Ppx_lwt*)
 let ( let* ) = Lwt.bind
 let ( and* ) = Lwt.both
@@ -13,24 +16,55 @@ let open_prop prop proxy = OBus_property.get @@ OBus_property.make prop proxy
 
 let show_help () = Lwt_io.printf "Commands: connection show, device show.\n"
 
+let unwrap_string = function OBus_value.V.Basic OBus_value.V.String s -> Some s | _ -> None
+
 let make_proxy bus path =
   OBus_proxy.make
     ~peer:
       (OBus_peer.make ~connection:bus ~name:"org.freedesktop.NetworkManager")
     ~path
 
+let rec parse lst f =
+  match lst with
+  | [] -> Lwt_io.printlf "Error"
+  | [ x ] -> f x
+  | hd :: tl ->
+      let* () = f hd in
+      parse tl f
+
+let get_conn_props proxy prop =
+  let* lst = OBus_method.call Nm_settings_conn.m_GetSettings proxy () in
+  lwt @@ 
+   try
+    Option.value ~default:"--" @@ unwrap_string @@
+    List.assoc prop @@ List.assoc "connection" lst
+   with Not_found -> "--"
+    
+let is_active bus path_to_setting =
+  let nmproxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager" ] in
+  let* act_conns = open_prop Nm_common.p_ActiveConnections nmproxy in
+  let tr1 path_to_actconn = 
+    let proxy = make_proxy bus path_to_actconn in
+    open_prop Nm_connection.p_Connection proxy
+  in
+
+  let rec parse lst =
+    match lst with
+    | [x] -> let* tr = tr1 x in if OBus_path.compare tr path_to_setting = 0 then lwt "+" else lwt "-"
+    | hd::tl -> let* tr = tr1 hd in if OBus_path.compare tr path_to_setting = 0 then lwt "+" else parse tl
+    | [] -> lwt "-"
+  in
+    (parse act_conns)
+
+
 let show_conn bus path =
   let proxy = make_proxy bus path in
-  let* id = open_prop Nm_connection.p_Id proxy in
-  let* uuid = open_prop Nm_connection.p_Uuid proxy in
-  let* type_conn = open_prop Nm_connection.p_Type proxy in
-  let* dev_path1 = open_prop Nm_connection.p_Devices proxy in
-  let dev_path = match dev_path1 with [ x ] -> x | _ -> [] in
-  let* device =
-    if dev_path = [] then lwt "--"
-    else open_prop Nm_device.p_Interface (make_proxy bus dev_path)
-  in
-  Lwt_io.printlf "%s %s %s %s" id uuid type_conn device
+  let* id = get_conn_props proxy "id" in
+  let* uuid = get_conn_props proxy "uuid" in
+  let* type_conn = get_conn_props proxy "type" in
+  let* device = get_conn_props proxy "interface-name" in
+  let* act = is_active bus path in
+  Lwt_io.printlf "%s %s %s %s %s" act id uuid type_conn device
 
 let get_connection () =
   let arg2 = Sys.argv.(2) in
@@ -38,20 +72,13 @@ let get_connection () =
   | "show" ->
       let* () =
         Lwt_io.print
-          "NAME    UUID                                  TYPE      DEVICE\n"
+          "? NAME    UUID                                  TYPE      DEVICE\n"
       in
       let* bus = OBus_bus.system () in
-      let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager" ] in
-      let* act_conns = open_prop Nm_common.p_ActiveConnections proxy in
-      let rec parse lst =
-        match lst with
-        | [] -> Lwt_io.printlf "There is no connections"
-        | [ x ] -> show_conn bus x
-        | hd :: tl ->
-            let* () = show_conn bus hd in
-            parse tl
-      in
-      parse act_conns
+      let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager"; "Settings" ] in
+      let* conns = open_prop Nm_settings.p_Connections proxy in
+      
+      parse conns (show_conn bus)
   | "help" -> Lwt_io.printlf "Type \"oc_network device show\" to show all your network connections."
   | _ -> Lwt_io.printlf "Maybe you want to type \"oc_network connection help\" ?"
 
@@ -106,15 +133,7 @@ let get_device () =
       let* bus = OBus_bus.system () in
       let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager" ] in
       let* devices = open_prop Nm_common.p_Devices proxy in
-      let rec parse lst =
-        match lst with
-        | [] -> Lwt_io.printlf "There is no network devices"
-        | [ x ] -> show_device bus x
-        | hd :: tl ->
-            let* () = show_device bus hd in
-            parse tl
-      in
-      parse devices
+      parse devices (show_device bus)
   | "help" -> Lwt_io.printlf "Type \"oc_network device show\" to show all your network devices."
   | _ -> Lwt_io.printlf "Maybe you want to type \"oc_network device help\" ?"
 
