@@ -1,16 +1,22 @@
 open Nm
 module Nm_common = Nm_interfaces.Org_freedesktop_NetworkManager
+
 module Nm_connection =
   Nm_interfaces.Org_freedesktop_NetworkManager_Connection_Active
+
 module Nm_device = Nm_interfaces.Org_freedesktop_NetworkManager_Device
 module Nm_settings = Nm_interfaces.Org_freedesktop_NetworkManager_Settings
+
 module Nm_settings_conn =
   Nm_interfaces.Org_freedesktop_NetworkManager_Settings_Connection
+
 (*open Ppx_lwt*)
 (*open Lwt.Infix*)
 
 let ( let* ) = Lwt.bind
+
 let ( and* ) = Lwt.both
+
 let lwt a = Lwt.return a
 
 let open_prop prop proxy = OBus_property.get @@ OBus_property.make prop proxy
@@ -72,16 +78,19 @@ let show_conn bus path =
   let* act = is_active bus path in
   Lwt_io.printlf "%s %s %s %s %s" act id uuid type_conn device
 
-type connection = {id:string; uuid:string; path:OBus_path.t}
+type connection = { id : string; uuid : string; path : OBus_path.t }
+
 (*["org";"freedesktop";"NetworkManager";"Settings";"1"],["org";"freedesktop";"NetworkManager";"Devices";"2"],[]*)
 
 let activate_conn path bus =
-  let proxy = make_proxy bus ["org"; "freedesktop"; "NetworkManager"] in
-  let* out_path = OBus_method.call Nm_common.m_ActivateConnection proxy (path,[],[]) in
-  Lwt_io.printl (String.concat "/" (""::out_path))
+  let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager" ] in
+  let* out_path =
+    OBus_method.call Nm_common.m_ActivateConnection proxy (path, [], [])
+  in
+  Lwt_io.printl (String.concat "/" ("" :: out_path))
 
 let deactivate_conn path bus =
-  let proxy = make_proxy bus ["org"; "freedesktop"; "NetworkManager"] in
+  let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager" ] in
   let* () = OBus_method.call Nm_common.m_DeactivateConnection proxy path in
   Lwt_io.printl "Done"
 
@@ -102,43 +111,48 @@ let get_connection bus =
       let input_name = Sys.argv.(3) in
       let uuid_reg = Str.regexp "........-....-....-....-............" in
       let path_reg = Str.regexp "/org/freedesktop/NetworkManager/Settings/*" in
-      let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager"; "Settings" ] in
+      let proxy =
+        make_proxy bus [ "org"; "freedesktop"; "NetworkManager"; "Settings" ]
+      in
       let* conns = open_prop Nm_settings.p_Connections proxy in
-      let rec parse conns label = 
+      let rec parse conns label =
         match conns with
-        | [] -> Lwt_io.printl "No connections" 
-        | [x] -> let proxy = make_proxy bus x in
-          let* name = get_conn_props proxy label in
-          if name = input_name then activate_conn x bus
-          else Lwt_io.printlf "No connection with name \"%s\"" input_name
-        | hd::tl -> let proxy = make_proxy bus hd in
-          let* name = get_conn_props proxy label in
-          if name = input_name then activate_conn hd bus
-          else (parse tl label)
-        in
-      if Str.string_match uuid_reg input_name 0 then
-        parse conns "uuid"
+        | [] -> Lwt_io.printl "No connections"
+        | [ x ] ->
+            let proxy = make_proxy bus x in
+            let* name = get_conn_props proxy label in
+            if name = input_name then activate_conn x bus
+            else Lwt_io.printlf "No connection with name \"%s\"" input_name
+        | hd :: tl ->
+            let proxy = make_proxy bus hd in
+            let* name = get_conn_props proxy label in
+            if name = input_name then activate_conn hd bus else parse tl label
+      in
+      if Str.string_match uuid_reg input_name 0 then parse conns "uuid"
       else if Str.string_match path_reg input_name 0 then
         let path = List.tl @@ String.split_on_char '/' input_name in
         activate_conn path bus
       else parse conns "id"
-  | "down" -> 
+  | "down" ->
       let input_name = Sys.argv.(3) in
       let uuid_reg = Str.regexp "........-....-....-....-............" in
-      let path_reg = Str.regexp "/org/freedesktop/NetworkManager/ActiveConnection/*" in
-      let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager"] in
+      let path_reg =
+        Str.regexp "/org/freedesktop/NetworkManager/ActiveConnection/*"
+      in
+      let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager" ] in
       let* act_conns = open_prop Nm_common.p_ActiveConnections proxy in
       let rec parse conns prop =
         match conns with
         | [] -> Lwt_io.printl "No active connections"
-        | [x] -> let proxy = make_proxy bus x in
-          let* name = open_prop prop proxy in
-          if name = input_name then deactivate_conn x bus
-          else Lwt_io.printlf "No connection named %s" input_name
-        | hd::tl -> let proxy = make_proxy bus hd in
-          let* name = open_prop prop proxy in
-          if name = input_name then deactivate_conn hd bus
-          else parse tl prop
+        | [ x ] ->
+            let proxy = make_proxy bus x in
+            let* name = open_prop prop proxy in
+            if name = input_name then deactivate_conn x bus
+            else Lwt_io.printlf "No connection named %s" input_name
+        | hd :: tl ->
+            let proxy = make_proxy bus hd in
+            let* name = open_prop prop proxy in
+            if name = input_name then deactivate_conn hd bus else parse tl prop
       in
       if Str.string_match uuid_reg input_name 0 then
         parse act_conns Nm_connection.p_Uuid
@@ -146,9 +160,15 @@ let get_connection bus =
         let path = List.tl @@ String.split_on_char '/' input_name in
         deactivate_conn path bus
       else parse act_conns Nm_connection.p_Id
+  | "add" -> 
+      let* () = Lwt_io.printl "hghkjh" in
+      Lwt_io.printl "No active connections"
   | "help" ->
       Lwt_io.printlf
-      "Type \"oc_network device show\" to show all your network connections."
+        "Type\n\
+         \"oc_network connection show\" to show all your network connections;\n\
+         \"oc_network connection up [id, uuid, path]\" to enable connection;\n\
+         \"oc_network connection down [id, uuid, path]\" to disable connection."
   | _ ->
       Lwt_io.printlf "Maybe you want to type \"oc_network connection help\" ?"
 
