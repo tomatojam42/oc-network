@@ -72,6 +72,19 @@ let show_conn bus path =
   let* act = is_active bus path in
   Lwt_io.printlf "%s %s %s %s %s" act id uuid type_conn device
 
+type connection = {id:string; uuid:string; path:OBus_path.t}
+(*["org";"freedesktop";"NetworkManager";"Settings";"1"],["org";"freedesktop";"NetworkManager";"Devices";"2"],[]*)
+
+let activate_conn path bus =
+  let proxy = make_proxy bus ["org"; "freedesktop"; "NetworkManager"] in
+  let* out_path = OBus_method.call Nm_common.m_ActivateConnection proxy (path,[],[]) in
+  Lwt_io.printl (String.concat "/" (""::out_path))
+
+let deactivate_conn path bus =
+  let proxy = make_proxy bus ["org"; "freedesktop"; "NetworkManager"] in
+  let* () = OBus_method.call Nm_common.m_DeactivateConnection proxy path in
+  Lwt_io.printl "Done"
+
 let get_connection bus =
   let arg2 = Sys.argv.(2) in
   match arg2 with
@@ -86,17 +99,53 @@ let get_connection bus =
       let* conns = open_prop Nm_settings.p_Connections proxy in
       parse conns (show_conn bus)
   | "up" ->
-      let conn_name = Sys.argv.(3) in
+      let input_name = Sys.argv.(3) in
       let uuid_reg = Str.regexp "........-....-....-....-............" in
       let path_reg = Str.regexp "/org/freedesktop/NetworkManager/Settings/*" in
-      if Str.string_match uuid_reg conn_name 0 then
-        (*let testproxy = make_proxy bus ["org"; "freedesktop"; "NetworkManager"] in
-        let* out_path = OBus_method.call Nm_common.m_ActivateConnection testproxy (["org";"freedesktop";"NetworkManager";"Settings";"1"],["org";"freedesktop";"NetworkManager";"Devices";"2"],[]) in
-        Lwt_io.printl (String.concat "/" (""::out_path))*)
-        Lwt_io.printl "uuid"
-      else if Str.string_match path_reg conn_name 0 then
-        Lwt_io.printl "path"
-      else Lwt_io.printl "name"
+      let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager"; "Settings" ] in
+      let* conns = open_prop Nm_settings.p_Connections proxy in
+      let rec parse conns label = 
+        match conns with
+        | [] -> Lwt_io.printl "No connections" 
+        | [x] -> let proxy = make_proxy bus x in
+          let* name = get_conn_props proxy label in
+          if name = input_name then activate_conn x bus
+          else Lwt_io.printlf "No connection with name \"%s\"" input_name
+        | hd::tl -> let proxy = make_proxy bus hd in
+          let* name = get_conn_props proxy label in
+          if name = input_name then activate_conn hd bus
+          else (parse tl label)
+        in
+      if Str.string_match uuid_reg input_name 0 then
+        parse conns "uuid"
+      else if Str.string_match path_reg input_name 0 then
+        let path = List.tl @@ String.split_on_char '/' input_name in
+        activate_conn path bus
+      else parse conns "id"
+  | "down" -> 
+      let input_name = Sys.argv.(3) in
+      let uuid_reg = Str.regexp "........-....-....-....-............" in
+      let path_reg = Str.regexp "/org/freedesktop/NetworkManager/ActiveConnection/*" in
+      let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager"] in
+      let* act_conns = open_prop Nm_common.p_ActiveConnections proxy in
+      let rec parse conns prop =
+        match conns with
+        | [] -> Lwt_io.printl "No active connections"
+        | [x] -> let proxy = make_proxy bus x in
+          let* name = open_prop prop proxy in
+          if name = input_name then deactivate_conn x bus
+          else Lwt_io.printlf "No connection named %s" input_name
+        | hd::tl -> let proxy = make_proxy bus hd in
+          let* name = open_prop prop proxy in
+          if name = input_name then deactivate_conn hd bus
+          else parse tl prop
+      in
+      if Str.string_match uuid_reg input_name 0 then
+        parse act_conns Nm_connection.p_Uuid
+      else if Str.string_match path_reg input_name 0 then
+        let path = List.tl @@ String.split_on_char '/' input_name in
+        deactivate_conn path bus
+      else parse act_conns Nm_connection.p_Id
   | "help" ->
       Lwt_io.printlf
       "Type \"oc_network device show\" to show all your network connections."
