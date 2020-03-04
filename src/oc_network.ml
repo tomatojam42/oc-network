@@ -43,8 +43,7 @@ let rec parse lst f =
 
 let get_conn_props proxy prop =
   let* lst = OBus_method.call Nm_settings_conn.m_GetSettings proxy () in
-  lwt
-  @@
+  lwt @@
   try
     Option.value ~default:"--" @@ unwrap_string @@ List.assoc prop
     @@ List.assoc "connection" lst
@@ -93,6 +92,30 @@ let deactivate_conn path bus =
   let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager" ] in
   let* () = OBus_method.call Nm_common.m_DeactivateConnection proxy path in
   Lwt_io.printl "Done"
+
+let wrap_string x = OBus_value.V.basic_string x
+
+let wrap_bool x = OBus_value.V.basic_boolean x
+
+let wrap_int32 x = OBus_value.V.basic_int32 @@ Int32.of_int x
+
+let reverse_int32 (x : int32) =
+  let ( lsr ), ( lsl ), ( land ), ( + ) =
+    Int32.shift_right_logical,
+    Int32.shift_left,
+    Int32.logand,
+    Int32.add in
+  let mask = 0xFFl in
+  let (a,b,c,d) =
+    ((x lsr 24) land mask),
+    ((x lsr 16) land mask),
+    ((x lsr 8) land mask),
+    (x land mask) in
+  ((d lsl 24) + (c lsl 16) + (b lsl 8) + a)
+
+let wrap_dns_list x =
+  List.map (fun dns -> OBus_value.V.basic_uint32 @@ reverse_int32 @@ (*Ipaddr.V4.to_int32*) Int32.of_int dns) x
+  |> fun a -> (OBus_value.V.array (OBus_value.T.Basic OBus_value.T.Uint32) a)
 
 let get_connection bus =
   let arg2 = Sys.argv.(2) in
@@ -161,8 +184,16 @@ let get_connection bus =
         deactivate_conn path bus
       else parse act_conns Nm_connection.p_Id
   | "add" -> 
-      let* () = Lwt_io.printl "hghkjh" in
-      Lwt_io.printl "No active connections"
+      let* () = Lwt_io.printl "Введите имя:" in
+      let* id = Lwt_io.read_line Lwt_io.stdin in
+      let* () = Lwt_io.printl "Введите тип (например, 802-3-ethernet):" in
+      let* type_conn = Lwt_io.read_line Lwt_io.stdin in
+      let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager"; "Settings"] in
+      let* path = OBus_method.call Nm_settings.m_AddConnection proxy
+      ["connection", [ "id",   wrap_string id; "type", wrap_string type_conn];
+      "ipv4", ["method", wrap_string "auto"; "dns",  wrap_dns_list [134744072]]]
+       in
+      Lwt_io.printlf "%s" (String.concat "/" ("" :: path))
   | "help" ->
       Lwt_io.printlf
         "Type\n\
