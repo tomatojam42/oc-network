@@ -1,6 +1,5 @@
 open Nm
 module Nm_common = Nm_interfaces.Org_freedesktop_NetworkManager
-
 module Nm_connection =
   Nm_interfaces.Org_freedesktop_NetworkManager_Connection_Active
 module Nm_device = Nm_interfaces.Org_freedesktop_NetworkManager_Device
@@ -13,12 +12,11 @@ module Nm_settings_conn =
 
 let ( let* ) = Lwt.bind
 let ( and* ) = Lwt.both
-
 let lwt a = Lwt.return a
 
 let open_prop prop proxy = OBus_property.get @@ OBus_property.make prop proxy
 
-let show_help () = Lwt_io.printf "Commands: connection show, device show.\n"
+let show_help () = Lwt_io.printf "Commands: connection show/up/down/add, device show.\n"
 
 let unwrap_string = function
   | OBus_value.V.Basic (OBus_value.V.String s) -> Some s
@@ -40,7 +38,8 @@ let rec parse lst f =
 
 let get_conn_props proxy prop =
   let* lst = OBus_method.call Nm_settings_conn.m_GetSettings proxy () in
-  lwt @@
+  lwt
+  @@
   try
     Option.value ~default:"--" @@ unwrap_string @@ List.assoc prop
     @@ List.assoc "connection" lst
@@ -98,21 +97,24 @@ let wrap_int32 x = OBus_value.V.basic_int32 @@ Int32.of_int x
 
 let reverse_int32 (x : int32) =
   let ( lsr ), ( lsl ), ( land ), ( + ) =
-    Int32.shift_right_logical,
-    Int32.shift_left,
-    Int32.logand,
-    Int32.add in
+    (Int32.shift_right_logical, Int32.shift_left, Int32.logand, Int32.add)
+  in
   let mask = 0xFFl in
-  let (a,b,c,d) =
-    ((x lsr 24) land mask),
-    ((x lsr 16) land mask),
-    ((x lsr 8) land mask),
-    (x land mask) in
-  ((d lsl 24) + (c lsl 16) + (b lsl 8) + a)
+  let a, b, c, d =
+    ( (x lsr 24) land mask,
+      (x lsr 16) land mask,
+      (x lsr 8) land mask,
+      x land mask )
+  in
+  (d lsl 24) + (c lsl 16) + (b lsl 8) + a
 
 let wrap_dns_list x =
-  List.map (fun dns -> OBus_value.V.basic_uint32 @@ reverse_int32 @@ (*Ipaddr.V4.to_int32*) Int32.of_int dns) x
-  |> fun a -> (OBus_value.V.array (OBus_value.T.Basic OBus_value.T.Uint32) a)
+  List.map
+    (fun dns ->
+      OBus_value.V.basic_uint32 @@ reverse_int32
+      @@ (*Ipaddr.V4.to_int32*) Int32.of_int dns)
+    x
+  |> fun a -> OBus_value.V.array (OBus_value.T.Basic OBus_value.T.Uint32) a
 
 let get_connection bus =
   let arg2 = Sys.argv.(2) in
@@ -180,42 +182,80 @@ let get_connection bus =
         let path = List.tl @@ String.split_on_char '/' input_name in
         deactivate_conn path bus
       else parse act_conns Nm_connection.p_Id
-  | "add" -> 
+  | "add" ->
       let* () = Lwt_io.printl "Введите имя:" in
       let* id = Lwt_io.read_line Lwt_io.stdin in
-      let* () = Lwt_io.printl "Введите тип (например, 802-3-ethernet):" in
+      let* () =
+        Lwt_io.printl
+          "Введите тип (например, 802-3-ethernet):"
+      in
       let* type_conn = Lwt_io.read_line Lwt_io.stdin in
-      let* () = Lwt_io.printl "Введите метод (auto или manual):" in
+      let* () =
+        Lwt_io.printl "Введите метод (auto или manual):"
+      in
       let* method_conn = Lwt_io.read_line Lwt_io.stdin in
-      let proxy = make_proxy bus [ "org"; "freedesktop"; "NetworkManager"; "Settings"] in
-      
-       if method_conn = "auto" then
-       let* path = OBus_method.call Nm_settings.m_AddConnection proxy
-       ["connection", [ "id",   wrap_string id; "type", wrap_string type_conn];
-       "ipv4", ["method", wrap_string "auto"; "dns",  wrap_dns_list [134744072]]]
-        in
-       Lwt_io.printlf "%s" (String.concat "/" ("" :: path))
+      let proxy =
+        make_proxy bus [ "org"; "freedesktop"; "NetworkManager"; "Settings" ]
+      in
 
-       else if method_conn = "manual" then
-       let* () = Lwt_io.printl "Введите IP:" in
-       let* ip_conn =  Lwt_io.read_line Lwt_io.stdin in
-       let ip_conn2 = reverse_int32 @@ Ipaddr.V4.to_int32 @@ match (Ipaddr.V4.of_string ip_conn) with
-       | Ok v -> v
-       | Error _ -> failwith "err"
-         in
-       (*let* () = Lwt_io.printl "Введите маску подсети:" in
-       let* mask_conn = Lwt_io.read_line Lwt_io.stdin in*)
-       let aaa a = OBus_value.V.basic_uint32 a in
-       let* path = let open OBus_value in
-       OBus_method.call Nm_settings.m_AddConnection proxy
-       ["connection", [ "id",   wrap_string id; "type", wrap_string type_conn];
-       "ipv4", ["address-data", V.array (T.Dict (T.String, T.Variant)) [V.dict T.String T.Variant
-       [V.string "adress", V.variant (wrap_string ip_conn); V.string "prefix", V.variant @@ V.basic_uint32 24l]];
-       "addresses", V.array (T.Array (T.Basic T.Uint32)) [V.array (T.Basic T.Uint32) [aaa ip_conn2; aaa 24l; aaa 24094912l]];
-       "method", wrap_string "manual"; "dns",  wrap_dns_list [134744072]]]
+      if method_conn = "auto" then
+        let* path =
+          OBus_method.call Nm_settings.m_AddConnection proxy
+            [
+              ( "connection",
+                [ ("id", wrap_string id); ("type", wrap_string type_conn) ] );
+              ( "ipv4",
+                [
+                  ("method", wrap_string "auto");
+                  ("dns", wrap_dns_list [ 134744072 ]);
+                ] );
+            ]
         in
         Lwt_io.printlf "%s" (String.concat "/" ("" :: path))
-       else Lwt_io.printl "Неверный метод"
+      else if method_conn = "manual" then
+        let* () = Lwt_io.printl "Введите IP:" in
+        let* ip_conn = Lwt_io.read_line Lwt_io.stdin in
+        let ip_conn2 =
+          reverse_int32 @@ Ipaddr.V4.to_int32
+          @@
+          match Ipaddr.V4.of_string ip_conn with
+          | Ok v -> v
+          | Error _ -> failwith "err"
+        in
+        (*let* () = Lwt_io.printl "Введите маску подсети:" in
+          let* mask_conn = Lwt_io.read_line Lwt_io.stdin in*)
+        let aaa a = OBus_value.V.basic_uint32 a in
+        let* path =
+          let open OBus_value in
+          OBus_method.call Nm_settings.m_AddConnection proxy
+            [
+              ( "connection",
+                [ ("id", wrap_string id); ("type", wrap_string type_conn) ] );
+              ( "ipv4",
+                [
+                  ( "address-data",
+                    V.array
+                      (T.Dict (T.String, T.Variant))
+                      [
+                        V.dict T.String T.Variant
+                          [
+                            (V.string "adress", V.variant (wrap_string ip_conn));
+                            (V.string "prefix", V.variant @@ V.basic_uint32 24l);
+                          ];
+                      ] );
+                  ( "addresses",
+                    V.array (T.Array (T.Basic T.Uint32))
+                      [
+                        V.array (T.Basic T.Uint32)
+                          [ aaa ip_conn2; aaa 24l; aaa 24094912l ];
+                      ] );
+                  ("method", wrap_string "manual");
+                  ("dns", wrap_dns_list [ 134744072 ]);
+                ] );
+            ]
+        in
+        Lwt_io.printlf "%s" (String.concat "/" ("" :: path))
+      else Lwt_io.printl "Неверный метод"
   | "help" ->
       Lwt_io.printlf
         "Type\n\
